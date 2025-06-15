@@ -67,6 +67,8 @@
       overflow-y: auto;
       font-size: 14px;
       display: none;
+      cursor: move;
+      user-select: none;
     }
 
     #dynamic-filter label {
@@ -131,11 +133,10 @@
     sectionTitle.textContent = title;
     section.appendChild(sectionTitle);
 
-    const selectAllId = `select-all-${attribute}`;
     const selectAllLabel = document.createElement('label');
     selectAllLabel.className = 'select-all';
     selectAllLabel.innerHTML = `
-      <input type="checkbox" id="${selectAllId}" checked>
+      <input type="checkbox" checked>
       All
     `;
     section.appendChild(selectAllLabel);
@@ -225,15 +226,52 @@
     const section = container.querySelector('.section[data-filter-attribute="data-rarity"]');
     if (!section) return;
 
-    section.querySelectorAll('input.filter-checkbox').forEach(cb => {
-      cb.checked = (cb.value === rarity);
-    });
+    const checkboxes = section.querySelectorAll('input.filter-checkbox');
+    const onlyChecked = Array.from(checkboxes).filter(cb => cb.checked);
 
-    const selectAll = section.querySelector('input[type="checkbox"]:not(.filter-checkbox)');
-    if (selectAll) selectAll.checked = false;
+    if (onlyChecked.length === 1 && onlyChecked[0].value === rarity) {
+      checkboxes.forEach(cb => cb.checked = true);
+      const selectAll = section.querySelector('input[type="checkbox"]:not(.filter-checkbox)');
+      if (selectAll) selectAll.checked = true;
+    } else {
+      checkboxes.forEach(cb => {
+        cb.checked = (cb.value === rarity);
+      });
+      const selectAll = section.querySelector('input[type="checkbox"]:not(.filter-checkbox)');
+      if (selectAll) selectAll.checked = false;
+    }
 
     filterCards();
   });
+
+  // === RENDRE LE PANNEAU DÉPLAÇABLE ===
+  (function makeFilterDraggable() {
+    let isDragging = false;
+    let offsetX = 0, offsetY = 0;
+
+    container.addEventListener('mousedown', (e) => {
+      if (!e.target.closest('input') && !e.target.closest('label')) {
+        isDragging = true;
+        const rect = container.getBoundingClientRect();
+        offsetX = e.clientX - rect.left;
+        offsetY = e.clientY - rect.top;
+        e.preventDefault();
+      }
+    });
+
+    document.addEventListener('mousemove', (e) => {
+      if (isDragging) {
+        container.style.left = (e.clientX - offsetX) + 'px';
+        container.style.top = (e.clientY - offsetY) + 'px';
+        container.style.bottom = 'auto';
+        container.style.right = 'auto';
+      }
+    });
+
+    document.addEventListener('mouseup', () => {
+      isDragging = false;
+    });
+  })();
 
   // === INIT ===
   filterCards();
