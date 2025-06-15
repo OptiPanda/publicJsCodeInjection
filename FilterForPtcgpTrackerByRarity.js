@@ -9,232 +9,164 @@
 // @grant        none
 // ==/UserScript==
 
-(function () {
+(function() {
+  // Helper: get unique values for an attribute
   function getUniqueAttributeValues(selector, attribute) {
-    const values = new Set();
-    document.querySelectorAll(selector).forEach(el => {
-      const val = el.getAttribute(attribute);
-      if (val) values.add(val);
-    });
-    return Array.from(values).sort();
+    return [...new Set(Array.from(document.querySelectorAll(selector), el => el.getAttribute(attribute)).filter(Boolean))].sort();
   }
 
-  // === STYLES ===
+  // Inject styles
   const style = document.createElement('style');
   style.textContent = `
-    @keyframes fade-in {
-      from { opacity: 0; }
-      to { opacity: 1; }
-    }
-    @keyframes fade-out {
-      from { opacity: 1; }
-      to { opacity: 0; }
-    }
+    #go-top { position: fixed; bottom: 20px; right: 120px; z-index: 10000; background: var(--pico-background-color); border: var(--pico-border-width) solid var(--pico-border-color); border-radius: var(--pico-border-radius); color: var(--filter-btn-color, white); padding: 10px 14px; font-size: 14px; cursor: pointer; }
 
-    .cards .card {
-      display: none;
-    }
-    .cards .card.did-fade-in {
-      display: block;
-    }
-    .cards .card.showing {
-      display: block;
-      animation: fade-in 0.5s ease;
-    }
-    .cards .card.hiding.did-fade-in {
-      display: block;
-      animation: fade-out 0.2s ease;
-    }
+    #filter-toggle { position: fixed; bottom: 20px; right: 20px; z-index: 10000; background: var(--pico-background-color); border: var(--pico-border-width) solid var(--pico-border-color); border-radius: var(--pico-border-radius); color: var(--filter-btn-color, white); padding: 10px 14px; font-size: 14px; cursor: pointer; }
 
-    #filter-toggle {
-      position: fixed;
-      bottom: 20px;
-      right: 20px;
-      z-index: 10000;
-      background: var(--pico-background-color);
-      border: var(--pico-border-width) solid var(--pico-border-color);
-      border-radius: var(--pico-border-radius);
-      color: var(--filter-btn-color, white);
-      padding: 10px 14px;
-      font-size: 14px;
-      cursor: pointer;
-    }
+    #dynamic-filter { position: fixed; bottom: 70px; right: 20px; background: var(--pico-form-element-background-color, white); color: var(--pico-form-element-color, #000); border: 1px solid var(--pico-form-element-border-color, #ccc); border-radius: 8px; padding: 10px; z-index: 9999; max-height: 80vh; overflow-y: auto; font-size: 14px; display: none; cursor: move; user-select: none; }
+    #dynamic-filter .section { margin-bottom: 12px; }
+    #dynamic-filter .section-title { font-weight: bold; margin-bottom: 6px; font-size: 13px; text-transform: uppercase; }
+    #dynamic-filter label { display: block; margin: 4px 0; font-size: 14px; }
+    #dynamic-filter .select-all { font-style: italic; margin-bottom: 6px; }
 
-    #dynamic-filter {
-      position: fixed;
-      bottom: 70px;
-      right: 20px;
-      background: var(--pico-form-element-background-color, white);
-      color: var(--pico-form-element-color, #000);
-      border: 1px solid var(--pico-form-element-border-color, #ccc);
-      border-radius: 8px;
-      padding: 10px;
-      z-index: 9999;
-      max-height: 80vh;
-      overflow-y: auto;
-      font-size: 14px;
-      display: none;
-      cursor: move;
-      user-select: none;
-    }
+    @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+    @keyframes fade-out { from { opacity: 1; } to { opacity: 0; } }
+    .cards .card { display: none; cursor:pointer; }
+    .cards .card.did-fade-in { display: block; }
+    .cards .card.showing { display: block; animation: fade-in 0.5s ease; }
+    .cards .card.hiding.did-fade-in { display: block; animation: fade-out 0.2s ease; }
+
+    .card.highlight {border-radius: 6px; -webkit-box-shadow: 0 0 3px 3px white;-moz-box-shadow: 0 0 3px 3px white; box-shadow: 0 0 3px 3px white;}
+    .card.highlight::after {color:white; background: rgba(63,63,63,.95); }
+
+    [data-set]::before { position: absolute;top: 86%;  left: 0%;  background: rgba(255,255,255,.95);  color: #333;  font-size: 1.3rem;  font-weight: bold;  padding: 3px; z-index:50; border-radius:5px}
+    .card::before { content: attr(data-set) }
+
+    .card::after{ content: attr(data-rarity) }
   `;
   document.head.appendChild(style);
 
-  document.addEventListener('animationstart', function (e) {
-    if (e.animationName === 'fade-in') {
-      e.target.classList.add('did-fade-in');
-    }
-  });
-
-  document.addEventListener('animationend', function (e) {
-    if (e.animationName === 'fade-out') {
-      e.target.classList.remove('did-fade-in');
-    }
-  });
-
-  const toggleButton = document.createElement('button');
-  toggleButton.id = 'filter-toggle';
-  toggleButton.textContent = '⚙️ Filters';
-  document.body.appendChild(toggleButton);
-
+  // State
   const container = document.createElement('div');
   container.id = 'dynamic-filter';
   document.body.appendChild(container);
 
-  const rarityValues = getUniqueAttributeValues('.card', 'data-rarity');
-  const setValues = getUniqueAttributeValues('.card', 'data-set');
+  document.querySelectorAll('.card').forEach(card => {
+    card.addEventListener('mouseenter', () => {
+        const rarity = card.getAttribute('data-rarity');
+        document.querySelectorAll(`.card[data-rarity="${rarity}"]`)
+            .forEach(c => c.classList.add('highlight'));
+    });
+    card.addEventListener('mouseleave', () => {
+        const rarity = card.getAttribute('data-rarity');
+        document.querySelectorAll(`.card[data-rarity="${rarity}"]`)
+            .forEach(c => c.classList.remove('highlight'));
+    });
+  });
 
-  function createFilterSection(title, attribute, values) {
+  // Build toggle button
+  const toggleButton = document.createElement('button');
+  toggleButton.id = 'filter-toggle';
+  toggleButton.textContent = '⚙️ Filters';
+  document.body.appendChild(toggleButton);
+  toggleButton.addEventListener('click', () => {
+    container.style.display = container.style.display === 'block' ? 'none' : 'block';
+  });
+  const goTopButton = document.createElement('button');
+  goTopButton.id = 'go-top';
+  goTopButton.textContent = '^';
+  document.body.appendChild(goTopButton);
+  goTopButton.addEventListener('click', () => {
+    window.scroll({
+        top: 0,
+        left: 0,
+        behavior: 'smooth'
+    });
+  });
+
+  // Sections setup
+  const filters = ['data-rarity', 'data-set'];
+  filters.forEach(attr => {
+    const values = getUniqueAttributeValues('.card', attr);
+    if (!values.length) return;
+
     const section = document.createElement('div');
     section.className = 'section';
-    section.dataset.filterAttribute = attribute;
+    section.dataset.filterAttribute = attr;
 
-    const sectionTitle = document.createElement('div');
-    sectionTitle.className = 'section-title';
-    sectionTitle.textContent = title;
-    section.appendChild(sectionTitle);
+    const title = document.createElement('div');
+    title.className = 'section-title';
+    title.textContent = attr.replace('data-', '').replace('-', ' ');
+    section.appendChild(title);
 
     const selectAllLabel = document.createElement('label');
     selectAllLabel.className = 'select-all';
-    selectAllLabel.innerHTML = `
-      <input type="checkbox" checked>
-      All
-    `;
+    selectAllLabel.innerHTML = `<input type="checkbox" checked> All`;
     section.appendChild(selectAllLabel);
 
-    values.forEach(value => {
+    values.forEach(val => {
       const label = document.createElement('label');
-      label.innerHTML = `
-        <input type="checkbox" class="filter-checkbox" data-group="${attribute}" value="${value}" checked>
-        ${value}
-      `;
+      label.innerHTML = `<input type="checkbox" class="filter-checkbox" data-group="${attr}" value="${val}" checked> ${val}`;
       section.appendChild(label);
     });
 
-    const selectAll = selectAllLabel.querySelector('input');
-    selectAll.addEventListener('change', () => {
-      const checkboxes = section.querySelectorAll('input.filter-checkbox');
-      checkboxes.forEach(cb => (cb.checked = selectAll.checked));
+    // Select all logic
+    const selectAllCb = selectAllLabel.querySelector('input');
+    selectAllCb.addEventListener('change', () => {
+      section.querySelectorAll('input.filter-checkbox').forEach(cb => cb.checked = selectAllCb.checked);
       filterCards();
     });
 
-    section.addEventListener('change', (e) => {
+    section.addEventListener('change', e => {
       if (e.target.classList.contains('filter-checkbox')) {
-        const checkboxes = section.querySelectorAll('input.filter-checkbox');
-        const allChecked = Array.from(checkboxes).every(cb => cb.checked);
-        selectAll.checked = allChecked;
+        const all = Array.from(section.querySelectorAll('input.filter-checkbox'));
+        selectAllCb.checked = all.every(cb => cb.checked);
+        filterCards();
       }
     });
 
-    return section;
-  }
-
-  container.appendChild(createFilterSection('Rarity', 'data-rarity', rarityValues));
-  container.appendChild(createFilterSection('Set', 'data-set', setValues));
-
-  function filterCards() {
-    const filters = {};
-    container.querySelectorAll('.section').forEach(section => {
-      const attr = section.dataset.filterAttribute;
-      const checkedValues = Array.from(section.querySelectorAll('input.filter-checkbox:checked'))
-        .map(cb => cb.value);
-      filters[attr] = checkedValues;
-    });
-
-    document.querySelectorAll('.card').forEach(card => {
-      const match = Object.entries(filters).every(([attr, allowed]) => {
-        const val = card.getAttribute(attr);
-        return allowed.includes(val);
-      });
-
-      if (match) {
-        card.classList.remove('hiding');
-        card.classList.add('showing');
-      } else {
-        card.classList.remove('showing');
-        card.classList.add('hiding');
-      }
-    });
-  }
-
-  container.addEventListener('change', filterCards);
-
-  toggleButton.addEventListener('click', () => {
-    container.style.display = container.style.display === 'none' ? 'block' : 'none';
+    container.appendChild(section);
   });
 
-  document.addEventListener('click', (e) => {
-    const card = e.target.closest('.card');
-    if (!card) return;
+  // Animation events
+  document.addEventListener('animationstart', e => e.animationName === 'fade-in' && e.target.classList.add('did-fade-in'));
+  document.addEventListener('animationend', e => e.animationName === 'fade-out' && e.target.classList.remove('did-fade-in'));
 
-    const rarity = card.getAttribute('data-rarity');
-    if (!rarity) return;
+  // Core filtering
+  function filterCards() {
+    const active = {};
+    container.querySelectorAll('.section').forEach(sec => {
+      active[sec.dataset.filterAttribute] = Array.from(sec.querySelectorAll('input.filter-checkbox:checked')).map(cb => cb.value);
+    });
+    document.querySelectorAll('.card').forEach(card => {
+      const show = Object.entries(active).every(([attr, vs]) => vs.includes(card.getAttribute(attr)));
+      card.classList.toggle('showing', show);
+      card.classList.toggle('hiding', !show);
+    });
+  }
 
-    const section = container.querySelector('.section[data-filter-attribute="data-rarity"]');
-    if (!section) return;
-
-    const checkboxes = section.querySelectorAll('input.filter-checkbox');
-    const onlyChecked = Array.from(checkboxes).filter(cb => cb.checked);
-
-    if (onlyChecked.length === 1 && onlyChecked[0].value === rarity) {
-      checkboxes.forEach(cb => cb.checked = true);
-      section.querySelector('input[type="checkbox"]:not(.filter-checkbox)').checked = true;
-    } else {
-      checkboxes.forEach(cb => {
-        cb.checked = (cb.value === rarity);
-      });
-      section.querySelector('input[type="checkbox"]:not(.filter-checkbox)').checked = false;
-    }
-
+  // Card click toggles rarity filter
+  document.addEventListener('click', e => {
+    const card = e.target.closest('.card'); if (!card) return;
+    const attr = 'data-rarity';
+    const val = card.getAttribute(attr); if (!val) return;
+    const sec = container.querySelector(`.section[data-filter-attribute="${attr}"]`);
+    const cbs = sec.querySelectorAll('input.filter-checkbox');
+    const single = Array.from(cbs).filter(cb => cb.checked);
+    if (single.length === 1 && single[0].value === val) cbs.forEach(cb => cb.checked = true), sec.querySelector('input:not(.filter-checkbox)').checked = true;
+    else cbs.forEach(cb => cb.checked = cb.value === val), sec.querySelector('input:not(.filter-checkbox)').checked = false;
     filterCards();
   });
 
-  (function makeFilterDraggable() {
-    let isDragging = false;
-    let offsetX = 0, offsetY = 0;
-
-    container.addEventListener('mousedown', (e) => {
+  // Draggable panel
+  (function() {
+    let drag = false, x=0, y=0;
+    container.addEventListener('mousedown', e => {
       if (!e.target.closest('input') && !e.target.closest('label')) {
-        isDragging = true;
-        const rect = container.getBoundingClientRect();
-        offsetX = e.clientX - rect.left;
-        offsetY = e.clientY - rect.top;
-        e.preventDefault();
+        drag=true; const r=container.getBoundingClientRect(); x=e.clientX-r.left; y=e.clientY-r.top; e.preventDefault();
       }
     });
-
-    document.addEventListener('mousemove', (e) => {
-      if (isDragging) {
-        container.style.left = (e.clientX - offsetX) + 'px';
-        container.style.top = (e.clientY - offsetY) + 'px';
-        container.style.bottom = 'auto';
-        container.style.right = 'auto';
-      }
-    });
-
-    document.addEventListener('mouseup', () => {
-      isDragging = false;
-    });
+    document.addEventListener('mousemove', e => drag && (container.style.left=`${e.clientX-x}px`, container.style.top=`${e.clientY-y}px`, container.style.bottom='auto', container.style.right='auto'));
+    document.addEventListener('mouseup', ()=>drag=false);
   })();
 
   filterCards();
