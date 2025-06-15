@@ -22,18 +22,31 @@
   // === STYLES ===
   const style = document.createElement('style');
   style.textContent = `
-    #filter-toggle:hover {
-       --pico-background-color: var(--pico-primary-hover-background);
-       --pico-border-color: var(--pico-primary-hover-border);
-       --pico-box-shadow: var(--pico-button-hover-box-shadow,0 0 0 rgba(0,0,0,0));
-      --pico-color: var(--pico-primary-inverse);
+    @keyframes fade-in {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+    @keyframes fade-out {
+      from { opacity: 1; }
+      to { opacity: 0; }
+    }
+
+    .cards .card {
+      display: none;
+    }
+    .cards .card.did-fade-in {
+      display: block;
+    }
+    .cards .card.showing {
+      display: block;
+      animation: fade-in 0.5s ease;
+    }
+    .cards .card.hiding.did-fade-in {
+      display: block;
+      animation: fade-out 0.2s ease;
     }
 
     #filter-toggle {
-      --pico-background-color: var(--pico-primary-background);
-      --pico-border-color: var(--pico-primary-border);
-      --pico-color: var(--pico-primary-inverse);
-      --pico-box-shadow: var(--pico-button-box-shadow,0 0 0 rgba(0,0,0,0));
       position: fixed;
       bottom: 20px;
       right: 20px;
@@ -42,13 +55,9 @@
       border: var(--pico-border-width) solid var(--pico-border-color);
       border-radius: var(--pico-border-radius);
       color: var(--filter-btn-color, white);
-      border: none;
-      border-radius: 999px;
       padding: 10px 14px;
       font-size: 14px;
       cursor: pointer;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-      transition: background-color var(--pico-transition),border-color var(--pico-transition),color var(--pico-transition),box-shadow var(--pico-transition);
     }
 
     #dynamic-filter {
@@ -59,9 +68,7 @@
       color: var(--pico-form-element-color, #000);
       border: 1px solid var(--pico-form-element-border-color, #ccc);
       border-radius: 8px;
-      box-shadow: 0 0 10px rgba(0,0,0,0.2);
       padding: 10px;
-      font-family: sans-serif;
       z-index: 9999;
       max-height: 80vh;
       overflow-y: auto;
@@ -70,48 +77,21 @@
       cursor: move;
       user-select: none;
     }
-
-    #dynamic-filter label {
-      display: block;
-      margin-bottom: 4px;
-    }
-
-    #dynamic-filter .section {
-      margin-bottom: 10px;
-    }
-
-    #dynamic-filter .section-title {
-      font-weight: bold;
-      margin-bottom: 5px;
-      font-size: 13px;
-      text-transform: uppercase;
-    }
-
-    #dynamic-filter .select-all {
-      margin-bottom: 6px;
-      font-style: italic;
-    }
-
-    .card {
-      cursor: pointer !important;
-      transition: opacity 0.2s ease;
-    }
-
-    .card.fade-out {
-      opacity: 0 !important;
-    }
-
-    .card.fade-in {
-      opacity: 1 !important;
-    }
-
-    .card[style*="display: none"] {
-      opacity: 0 !important;
-    }
   `;
   document.head.appendChild(style);
 
-  // === UI ELEMENTS ===
+  document.addEventListener('animationstart', function (e) {
+    if (e.animationName === 'fade-in') {
+      e.target.classList.add('did-fade-in');
+    }
+  });
+
+  document.addEventListener('animationend', function (e) {
+    if (e.animationName === 'fade-out') {
+      e.target.classList.remove('did-fade-in');
+    }
+  });
+
   const toggleButton = document.createElement('button');
   toggleButton.id = 'filter-toggle';
   toggleButton.textContent = '⚙️ Filters';
@@ -119,6 +99,7 @@
 
   const container = document.createElement('div');
   container.id = 'dynamic-filter';
+  document.body.appendChild(container);
 
   const rarityValues = getUniqueAttributeValues('.card', 'data-rarity');
   const setValues = getUniqueAttributeValues('.card', 'data-set');
@@ -168,14 +149,9 @@
     return section;
   }
 
-  const raritySection = createFilterSection('Rarity', 'data-rarity', rarityValues);
-  const setSection = createFilterSection('Set', 'data-set', setValues);
+  container.appendChild(createFilterSection('Rarity', 'data-rarity', rarityValues));
+  container.appendChild(createFilterSection('Set', 'data-set', setValues));
 
-  container.appendChild(raritySection);
-  container.appendChild(setSection);
-  document.body.appendChild(container);
-
-  // === FILTRAGE AVEC ANIMATION & DISPLAY NONE ===
   function filterCards() {
     const filters = {};
     container.querySelectorAll('.section').forEach(section => {
@@ -192,25 +168,16 @@
       });
 
       if (match) {
-        if (card.style.display === 'none') {
-          card.style.display = '';
-          card.classList.add('fade-in');
-          requestAnimationFrame(() => card.classList.remove('fade-in'));
-        }
+        card.classList.remove('hiding');
+        card.classList.add('showing');
       } else {
-        card.classList.add('fade-out');
-        setTimeout(() => {
-          card.style.display = 'none';
-          card.classList.remove('fade-out');
-        }, 200);
+        card.classList.remove('showing');
+        card.classList.add('hiding');
       }
     });
   }
 
-  // === INTERACTIONS ===
-  container.querySelectorAll('input.filter-checkbox').forEach(cb => {
-    cb.addEventListener('change', filterCards);
-  });
+  container.addEventListener('change', filterCards);
 
   toggleButton.addEventListener('click', () => {
     container.style.display = container.style.display === 'none' ? 'block' : 'none';
@@ -231,20 +198,17 @@
 
     if (onlyChecked.length === 1 && onlyChecked[0].value === rarity) {
       checkboxes.forEach(cb => cb.checked = true);
-      const selectAll = section.querySelector('input[type="checkbox"]:not(.filter-checkbox)');
-      if (selectAll) selectAll.checked = true;
+      section.querySelector('input[type="checkbox"]:not(.filter-checkbox)').checked = true;
     } else {
       checkboxes.forEach(cb => {
         cb.checked = (cb.value === rarity);
       });
-      const selectAll = section.querySelector('input[type="checkbox"]:not(.filter-checkbox)');
-      if (selectAll) selectAll.checked = false;
+      section.querySelector('input[type="checkbox"]:not(.filter-checkbox)').checked = false;
     }
 
     filterCards();
   });
 
-  // === RENDRE LE PANNEAU DÉPLAÇABLE ===
   (function makeFilterDraggable() {
     let isDragging = false;
     let offsetX = 0, offsetY = 0;
@@ -273,6 +237,5 @@
     });
   })();
 
-  // === INIT ===
   filterCards();
 })();
