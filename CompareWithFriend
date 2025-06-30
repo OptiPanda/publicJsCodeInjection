@@ -32,6 +32,14 @@
     console.warn('Impossible d\'extraire player1Id de l\'URL :', e);
   }
 
+  let rarity = {
+    "C" : '<span class="rarity-icon rarity-icon--rarity-R " style="height: 20px;"><span class="rarity-icon__icon rarity-icon__icon--diamond"></span></span>',
+    "CU" : '<span class="rarity-icon rarity-icon--rarity-R " style="height: 20px;">'+'<span class="rarity-icon__icon rarity-icon__icon--diamond"></span>'.repeat(2)+'</span>',
+    "CR" : '<span class="rarity-icon rarity-icon--rarity-R " style="height: 20px;">'+'<span class="rarity-icon__icon rarity-icon__icon--diamond"></span>'.repeat(3)+'</span>',
+    "CRR" : '<span class="rarity-icon rarity-icon--rarity-R " style="height: 20px;">'+'<span class="rarity-icon__icon rarity-icon__icon--diamond"></span>'.repeat(4)+'</span>',
+    "CAR" : '<span class="rarity-icon rarity-icon--rarity-R " style="height: 20px;"><span class="rarity-icon__icon rarity-icon__icon--star"></span>'
+  }
+
   // Styles pour modal et bouton toggle
   const style = document.createElement('style');
   style.textContent = `
@@ -42,7 +50,24 @@
       box-sizing: border-box; font-size: 14px; }
     #compareModal button { width: 100%; padding: 8px;
       font-size: 14px; cursor: pointer; margin-bottom: 8px; }
-    #compareResults { max-height: 200px; overflow-y: auto; font-size: 14px; }
+    #compareResults { max-height: 70vh; overflow-y: auto; font-size: 14px; }
+    #compareResults .card-result {
+      margin-bottom: 8px;
+      border: 1px solid #eee; border-radius: 4px;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    #compareResults .card-name {
+      width: 70px;
+      justify-content: left;
+    }
+    #compareResults .card-result .rarity-icon {
+      width: 55px;
+      justify-content: center;
+    }
+    #compareResults .card-result span,
+    #compareResults .card-result .rarity-icon {
+      display: inline-flex; align-items: center;
+    }
     #compareModal .close-btn { position: absolute; top: 8px; right: 8px;
       background: transparent; border: none; font-size: 18px; cursor: pointer; }
     #toggleCompareBtn { position: fixed; bottom: 20px; right: 20px; z-index: 10000; }
@@ -102,26 +127,38 @@
     );
   }
 
-  // Clic comparer
+  // Affichage résultats
   modal.querySelector('#compareBtn').addEventListener('click', async () => {
     const p1 = modal.querySelector('#player1Id').value.trim();
     const p2 = modal.querySelector('#player2Id').value.trim();
     const resultsDiv = modal.querySelector('#compareResults');
     resultsDiv.innerHTML = 'Chargement...';
-    if (!p1 || !p2) return resultsDiv.innerHTML = 'Veuillez saisir deux IDs de joueur.';
+    if (!p1 || !p2) return resultsDiv.textContent = 'Veuillez saisir deux IDs de joueur.';
     try {
       const missingDefs = await comparePlayers(p1, p2);
+      resultsDiv.innerHTML = '';
       if (missingDefs.length === 0) {
-        resultsDiv.innerHTML = 'Aucune carte manquante trouvée.';
+        resultsDiv.textContent = 'Aucune carte manquante trouvée.';
       } else {
-        const ul = document.createElement('ul');
         missingDefs.forEach(def => {
-          const li = document.createElement('li'); li.textContent = `${def.name} ${def.rarity} (${def.expansion.expansionId})`; ul.appendChild(li);
+          const cardDiv = document.createElement('div');
+          cardDiv.className = 'card-result';
+          // Nom
+          const nameSpan = document.createElement('span');
+          nameSpan.textContent = def.name;
+          nameSpan.className = 'card-name';
+          cardDiv.appendChild(nameSpan);
+          // Icônes de rareté
+          cardDiv.insertAdjacentHTML('beforeend', rarity[def.rarity]);
+          // Expansion ID
+          const expSpan = document.createElement('span');
+          expSpan.textContent = ` (${def.expansion.expansionId})`;
+          cardDiv.appendChild(expSpan);
+          resultsDiv.appendChild(cardDiv);
         });
-        resultsDiv.innerHTML = ''; resultsDiv.appendChild(ul);
       }
     } catch (err) {
-      resultsDiv.innerHTML = `Erreur : ${err.message}`;
+      resultsDiv.textContent = `Erreur : ${err.message}`;
     }
   });
 })();
