@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name        Compare with a friend
 // @namespace   Violentmonkey Scripts
-// @match       https://www.pokemon-zone.com/players/*/cards/*
+// @match       https://www.pokemon-zone.com/players/*
 // @grant       none
 // @version     1.0
 // @author      -
@@ -18,7 +18,7 @@
     const jsonAll = await resAll.json();
     allCards = jsonAll.data.cards.filter(c => !c.isPromotion);
     const latestExpansion = [...(new Set(allCards.map(c => c.expansion.expansionId)))].sort().pop();
-    allCards = allCards.filter(c => ["C","CU","CR","CRR","CAR"].includes(c.rarity) && c.expansion.expansionId != latestExpansion);
+    allCards = allCards.filter(c => ["C", "CU", "CR", "CRR", "CAR"].includes(c.rarity) && c.expansion.expansionId != latestExpansion);
   } catch (e) {
     console.error('Impossible de charger allCards :', e);
   }
@@ -32,12 +32,16 @@
     console.warn('Impossible d\'extraire player1Id de l\'URL :', e);
   }
 
+  const opentRarityIcon = `<span class="rarity-icon rarity-icon--rarity-R" style="height: 20px;">`;
+  const diamondSpan = `<span class="rarity-icon__icon rarity-icon__icon--diamond"></span>`;
+  const starSpan = `<span class="rarity-icon__icon rarity-icon__icon--star"></span>`;
+
   let rarity = {
-    "C" : '<span class="rarity-icon rarity-icon--rarity-R " style="height: 20px;"><span class="rarity-icon__icon rarity-icon__icon--diamond"></span></span>',
-    "CU" : '<span class="rarity-icon rarity-icon--rarity-R " style="height: 20px;">'+'<span class="rarity-icon__icon rarity-icon__icon--diamond"></span>'.repeat(2)+'</span>',
-    "CR" : '<span class="rarity-icon rarity-icon--rarity-R " style="height: 20px;">'+'<span class="rarity-icon__icon rarity-icon__icon--diamond"></span>'.repeat(3)+'</span>',
-    "CRR" : '<span class="rarity-icon rarity-icon--rarity-R " style="height: 20px;">'+'<span class="rarity-icon__icon rarity-icon__icon--diamond"></span>'.repeat(4)+'</span>',
-    "CAR" : '<span class="rarity-icon rarity-icon--rarity-R " style="height: 20px;"><span class="rarity-icon__icon rarity-icon__icon--star"></span>'
+    "C": `${opentRarityIcon}${diamondSpan}</span>`,
+    "CU": `${opentRarityIcon}${diamondSpan.repeat(2)}</span>`,
+    "CR": `${opentRarityIcon}${diamondSpan.repeat(3)}</span>`,
+    "CRR": `${opentRarityIcon}${diamondSpan.repeat(4)}</span>`,
+    "CAR": `${opentRarityIcon}${starSpan}</span>`
   }
 
   // Styles pour modal et bouton toggle
@@ -51,25 +55,33 @@
     #compareModal button { width: 100%; padding: 8px;
       font-size: 14px; cursor: pointer; margin-bottom: 8px; }
     #compareResults { max-height: 70vh; overflow-y: auto; font-size: 14px; }
-    #compareResults .card-result {
+    .card-result {
       margin-bottom: 8px;
       border: 1px solid #eee; border-radius: 4px;
       display: flex; align-items: center; justify-content: space-between;
     }
-    #compareResults .card-name {
+    .card-name {
       width: 70px;
       justify-content: left;
     }
-    #compareResults .card-result .rarity-icon {
+    .card-result .rarity-icon {
       width: 55px;
       justify-content: center;
     }
-    #compareResults .card-result span,
-    #compareResults .card-result .rarity-icon {
+    .card-result span,
+    .card-result .rarity-icon {
       display: inline-flex; align-items: center;
     }
     #compareModal .close-btn { position: absolute; top: 8px; right: 8px;
       background: transparent; border: none; font-size: 18px; cursor: pointer; }
+
+    #tabContainer { display:flex; margin-bottom:8px; }
+    #tabContainer.hidden { display:none; }
+    #tabContainer button { flex:1; padding:6px; cursor:pointer; border:none; background:#f0f0f0; }
+    #tabContainer button.active { background:white; border-bottom:2px solid #FFC424; }
+    .result-section { display:none; max-height:50vh; overflow-y:auto; }
+    .result-section.active { display:block; }
+
     #toggleCompareBtn { position: fixed; bottom: 20px; right: 20px; z-index: 10000; }
   `;
   document.head.appendChild(style);
@@ -87,11 +99,16 @@
   modal.id = 'compareModal';
   modal.innerHTML = `
     <button class="close-btn"></button>
-    <h3>Does my friend have cards for me ?</h3>
+    <h3>Can we trade cards ?</h3>
     <input type="text" id="player1Id" value="${player1Default}" hidden>
     <input type="text" id="player2Id" placeholder="Friend ID" maxlength="16">
     <button id="compareBtn" class="button button--primary">Compare</button>
-    <div id="compareResults"></div>
+    <div id="tabContainer" class="hidden">
+      <button id="tabYou" class="active">For you</button>
+      <button id="tabHim">For him</button>
+    </div>
+    <div id="resultYou" class="result-section active"></div>
+    <div id="resultHim" class="result-section"></div>
   `;
   document.body.appendChild(modal);
 
@@ -107,58 +124,98 @@
     toggleBtn.classList.toggle('button--primary');
   });
 
+  // paste with dashes
+  document.getElementById("player2Id").addEventListener("paste", (event) => {
+    event.preventDefault();
+    let paste = (event.clipboardData || window.clipboardData).getData("text");
+    event.target.value = paste.replace(/[-]+/g, '');
+  });
+
+
   // Fetch cartes joueur
   async function fetchPlayerCards(p) {
     const res = await fetch(`https://www.pokemon-zone.com/api/players/${p}`);
-    if (!res.ok) throw new Error(`Erreur fetch player ${p}`);
+    if (!res.ok) {
+      throw new Error(`Error fetch player ${p}`)
+    };
     const json = await res.json();
-    return json.data.cards;
+
+    return json.data;
   }
 
   // Comparaison
   async function comparePlayers(p1, p2) {
-    const [cards1, cards2] = await Promise.all([
+    const [dataPlayer1, dataPlayer2] = await Promise.all([
       fetchPlayerCards(p1), fetchPlayerCards(p2)
     ]);
-    const keys1 = new Set(cards1.map(c => c.cardId));
-    return allCards.filter(def =>
-      !keys1.has(def.cardId) &&
-      cards2.some(c2 => c2.cardId === def.cardId && c2.amount > 1)
-    );
+    const player1 = dataPlayer1.player;
+    const player2 = dataPlayer2.player;
+    const cardsPlayer1 = dataPlayer1.cards;
+    const cardsPlayer2 = dataPlayer2.cards;
+
+    const keys1 = new Set(cardsPlayer1.map(c => c.cardId));
+    const keys2 = new Set(cardsPlayer2.map(c => c.cardId));
+
+    const missingCardsPlayer1 = allCards.filter(def => !keys1.has(def.cardId) && cardsPlayer2.some(x => x.cardId === def.cardId && x.amount > 1));
+    const missingCardsPlayer2 = allCards.filter(def => !keys2.has(def.cardId) && cardsPlayer1.some(x => x.cardId === def.cardId && x.amount > 1));
+    return { player1, missingCardsPlayer1, player2, missingCardsPlayer2 };
   }
 
   // Affichage résultats
+  document.querySelectorAll('#tabContainer button').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('#tabContainer button').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      document.querySelectorAll('.result-section').forEach(sec => sec.classList.remove('active'));
+      document.getElementById(btn.id === 'tabYou' ? 'resultYou' : 'resultHim').classList.add('active');
+    });
+  });
+
+  // Bouton Compare
   modal.querySelector('#compareBtn').addEventListener('click', async () => {
     const p1 = modal.querySelector('#player1Id').value.trim();
     const p2 = modal.querySelector('#player2Id').value.trim();
-    const resultsDiv = modal.querySelector('#compareResults');
-    resultsDiv.innerHTML = 'Chargement...';
-    if (!p1 || !p2) return resultsDiv.textContent = 'Veuillez saisir deux IDs de joueur.';
+
+    const youDiv = document.getElementById('resultYou');
+    const himDiv = document.getElementById('resultHim');
+
+    youDiv.innerHTML = himDiv.innerHTML = 'Loading...';
+
+    if (!p1 || !p2) {
+      return youDiv.textContent = 'Please enter Friend ID.';
+    }
+
     try {
-      const missingDefs = await comparePlayers(p1, p2);
-      resultsDiv.innerHTML = '';
-      if (missingDefs.length === 0) {
-        resultsDiv.textContent = 'Aucune carte manquante trouvée.';
-      } else {
-        missingDefs.forEach(def => {
-          const cardDiv = document.createElement('div');
-          cardDiv.className = 'card-result';
-          // Nom
-          const nameSpan = document.createElement('span');
-          nameSpan.textContent = def.name;
-          nameSpan.className = 'card-name';
-          cardDiv.appendChild(nameSpan);
-          // Icônes de rareté
-          cardDiv.insertAdjacentHTML('beforeend', rarity[def.rarity]);
-          // Expansion ID
-          const expSpan = document.createElement('span');
-          expSpan.textContent = ` (${def.expansion.expansionId})`;
-          cardDiv.appendChild(expSpan);
-          resultsDiv.appendChild(cardDiv);
-        });
+      const { player1, missingCardsPlayer1, player2, missingCardsPlayer2 } = await comparePlayers(p1, p2);
+
+      const tabYou = document.getElementById('tabYou');
+      tabYou.innerHTML = `For ${player1.name}`;
+      const tabHim = document.getElementById('tabHim');
+      tabHim.innerHTML = `For ${player2.name}`;
+      const switchTab = document.getElementById('tabContainer').classList?.remove('hidden');
+
+      [youDiv, himDiv].forEach(div => div.innerHTML = '');
+
+      missingCardsPlayer1.forEach(def => {
+        const d = document.createElement('div'); d.className = 'card-result';
+        d.innerHTML = `<span class="card-name">${def.name}</span>${rarity[def.rarity]}<span>(${def.expansion.expansionId})</span>`;
+        youDiv.appendChild(d);
+      });
+
+      missingCardsPlayer2.forEach(def => {
+        const d = document.createElement('div'); d.className = 'card-result';
+        d.innerHTML = `<span class="card-name">${def.name}</span>${rarity[def.rarity]}<span>(${def.expansion.expansionId})</span>`;
+        himDiv.appendChild(d);
+      });
+
+      if (missingCardsPlayer1.length === 0) {
+        youDiv.textContent = `${player2.name} has nothing ${player1.name} needs!`;
+      }
+      if (missingCardsPlayer2.length === 0) {
+        himDiv.textContent = `${player1.name} has nothing ${player2.name} needs!`;
       }
     } catch (err) {
-      resultsDiv.textContent = `Erreur : ${err.message}`;
+      youDiv.textContent = himDiv.textContent = `Error : ${err.message}`;
     }
   });
 })();
