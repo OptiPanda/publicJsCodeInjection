@@ -4,6 +4,8 @@
 // @match       https://www.pokemon-zone.com/players/*
 // @grant       none
 // @version     1.0
+// @updateURL   https://raw.githubusercontent.com/OptiPanda/publicJsCodeInjection/refs/heads/main/CompareWithFriendForPokemonZone.js
+// @downloadURL https://raw.githubusercontent.com/OptiPanda/publicJsCodeInjection/refs/heads/main/CompareWithFriendForPokemonZone.js
 // @author      OptiPanda w/ ChatGPT
 // @description 30/06/2025 22:14:58
 // ==/UserScript==
